@@ -1,5 +1,5 @@
 {
-  "pluginAlias": "ExampleHomebridgePlugin",
+  "pluginAlias": "MieleVentilationHood",
   "pluginType": "platform",
   "singular": true,
   "schema": {
@@ -9,7 +9,19 @@
         "title": "Name",
         "type": "string",
         "required": true,
-        "default": "Example Dynamic Platform"
+        "default": "Miele Ventilation Hood"
+      },
+      "token": {
+        "title": "Token",
+        "type": "string",
+        "required": true,
+        "default": "Enter the Authentication Token"
+      },
+      "deviceId": {
+        "title": "Device ID",
+        "type": "string",
+        "required": true,
+        "default": "Enter the Device ID"
       }
     }
   }

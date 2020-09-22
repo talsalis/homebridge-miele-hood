@@ -136,7 +136,6 @@ export class MieleHoodPlatformAccessory {
         callback(err);
       }
       // NO PARSING BQ NO BODY!!!
-      // implement your own code to turn your device on/off
       this.States.FanOn = value as boolean;
       this.platform.log.debug('End - Set Fan Characteristic On ->', value);
       // you must call the callback function
@@ -151,7 +150,8 @@ export class MieleHoodPlatformAccessory {
     if (value === '0') {
       fanSpeed = value;
     } else {
-      fanSpeed = (Number(value)/25 + 1).toFixed();
+      fanSpeed = (Number(value)/25).toFixed();
+      // Corrected formula to get right increments 25% = 1, 50% = 2, 75% = 3, 100% = 4
     }
 
     this.platform.log.debug('End - Set ventilationStep to -> ', fanSpeed);

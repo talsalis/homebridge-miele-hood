@@ -16,12 +16,6 @@
         "type": "string",
         "required": true,
         "default": "Enter the Authentication Token"
-      },
-      "deviceId": {
-        "title": "Device ID",
-        "type": "string",
-        "required": true,
-        "default": "Enter the Device ID"
       }
     }
   }

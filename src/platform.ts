@@ -3,6 +3,8 @@ import { API, DynamicPlatformPlugin, Logger, PlatformAccessory, PlatformConfig, 
 import { PLATFORM_NAME, PLUGIN_NAME } from './settings';
 import { MieleHoodPlatformAccessory } from './platformAccessory';
 
+import request from 'request';
+
 /**
  * HomebridgePlatform
  * This class is the main constructor for your plugin, this is where you should
@@ -14,6 +16,8 @@ export class MieleHoodPlatform implements DynamicPlatformPlugin {
 
   // this is used to track restored cached accessories
   public readonly accessories: PlatformAccessory[] = [];
+  public token = 'Bearer ' + this.config['token'];
+  public baseURL = 'https://api.mcs3.miele.com/v1/devices';
 
   constructor(
     public readonly log: Logger,
@@ -50,63 +54,80 @@ export class MieleHoodPlatform implements DynamicPlatformPlugin {
    * must not be registered again to prevent "duplicate UUID" errors.
    */
   discoverDevices() {
+    // Query the Devices records
 
-    // EXAMPLE ONLY
-    // A real plugin you would discover accessories from the local network, cloud services
-    // or a user-defined array in the platform config.
-    const hoodDevices = [
-      {
-        exampleUniqueId: 'ABCD',
-        exampleDisplayName: 'Hood Light',
+    const config = {
+      'method': 'GET',
+      'url': this.baseURL,
+      'headers': { 
+        'Authorization': this.token,
+        'Content-Type': 'application/json',
       },
-    ];
+    };
 
-    // loop over the discovered devices and register each one if it has not already been registered
-    for (const device of hoodDevices) {
-
-      // generate a unique id for the accessory this should be generated from
-      // something globally unique, but constant, for example, the device serial
-      // number or MAC address
-      const uuid = this.api.hap.uuid.generate(device.exampleUniqueId);
-
-      // see if an accessory with the same uuid has already been registered and restored from
-      // the cached devices we stored in the `configureAccessory` method above
-      const existingAccessory = this.accessories.find(accessory => accessory.UUID === uuid);
-
-      if (existingAccessory) {
-        // the accessory already exists
-        this.log.info('Restoring existing accessory from cache:', existingAccessory.displayName);
-
-        // if you need to update the accessory.context then you should run `api.updatePlatformAccessories`. eg.:
-        // existingAccessory.context.device = device;
-        // this.api.updatePlatformAccessories([existingAccessory]);
-
-        // create the accessory handler for the restored accessory
-        // this is imported from `platformAccessory.ts`
-        new MieleHoodPlatformAccessory(this, existingAccessory);
-
-      } else {
-        // the accessory does not yet exist, so we need to create it
-        this.log.info('Adding new accessory:', device.exampleDisplayName);
-
-        // create a new accessory
-        const accessory = new this.api.platformAccessory(device.exampleDisplayName, uuid);
-
-        // store a copy of the device object in the `accessory.context`
-        // the `context` property can be used to store any data about the accessory you may need
-        accessory.context.device = device;
-
-        // create the accessory handler for the newly create accessory
-        // this is imported from `platformAccessory.ts`
-        new MieleHoodPlatformAccessory(this, accessory);
-
-        // link the accessory to your platform
-        this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
+    request(config, (err, res, body) => {
+      if (err) {
+        return(this.log.debug(err));
       }
+      const response = JSON.parse(body);
 
-      // it is possible to remove platform accessories at any time using `api.unregisterPlatformAccessories`, eg.:
-      // this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
-    }
+      this.log.debug('Platform - discoverDevices -> ', response);
 
+      const allDevices = Object.keys(response).map(key => response[key]);
+
+      // loop over the discovered devices and register each one if it has not already been registered
+      for (const device of allDevices) {
+
+        // Check if it is a Hood (type = 18)
+        if (device.ident.type.value_raw === 18) {
+          const hoodDevice = {
+            uniqueId: device.ident.deviceIdentLabel.fabNumber,
+            displayName: device.ident.deviceName,
+            modelNumber: device.ident.deviceIdentLabel.techType,
+          };
+
+          this.log.debug('Platform - hoodDevice -> ', hoodDevice);
+
+          // generate a unique id for the accessory this should be generated from
+          // something globally unique, but constant, for example, the device serial
+          // number or MAC address
+          const uuid = this.api.hap.uuid.generate(hoodDevice.uniqueId);
+
+          // see if an accessory with the same uuid has already been registered and restored from
+          // the cached devices we stored in the `configureAccessory` method above
+          const existingAccessory = this.accessories.find(accessory => accessory.UUID === uuid);
+
+          if (existingAccessory) {
+            // the accessory already exists
+            this.log.info('Restoring existing accessory from cache:', existingAccessory.displayName);
+            // if you need to update the accessory.context then you should run `api.updatePlatformAccessories`. eg.:
+            // existingAccessory.context.device = device;
+            // this.api.updatePlatformAccessories([existingAccessory]);
+
+            // create the accessory handler for the restored accessory
+            // this is imported from `platformAccessory.ts`
+            new MieleHoodPlatformAccessory(this, existingAccessory, hoodDevice.modelNumber, hoodDevice.uniqueId);
+
+          } else {
+            // the accessory does not yet exist, so we need to create it
+            this.log.info('Adding new accessory:', hoodDevice.displayName);
+
+            // create a new accessory
+            const accessory = new this.api.platformAccessory(hoodDevice.displayName, uuid);
+
+            // store a copy of the device object in the `accessory.context`
+            // the `context` property can be used to store any data about the accessory you may need
+            accessory.context.device = hoodDevice;
+
+            // create the accessory handler for the newly create accessory
+            // this is imported from `platformAccessory.ts`
+            new MieleHoodPlatformAccessory(this, accessory, hoodDevice.modelNumber, hoodDevice.uniqueId);
+
+            // link the accessory to your platform
+            this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
+          }
+        }
+      }
+    });
   }
 }

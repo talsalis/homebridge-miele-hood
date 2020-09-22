@@ -11,7 +11,8 @@ import request from 'request';
  */
 export class MieleHoodPlatformAccessory {
   private lightService: Service;
-  //private fanService: Service;
+  private fanService: Service;
+  private URL: string;
 
   /**
    * These are just used to create a working example
@@ -26,13 +27,19 @@ export class MieleHoodPlatformAccessory {
   constructor(
     private readonly platform: MieleHoodPlatform,
     private readonly accessory: PlatformAccessory,
+    private readonly model: string,
+    private readonly serialNumber: string,
   ) {
 
     // set accessory information
     this.accessory.getService(this.platform.Service.AccessoryInformation)!
       .setCharacteristic(this.platform.Characteristic.Manufacturer, 'Miele')
-      .setCharacteristic(this.platform.Characteristic.Model, 'Default-Model')
-      .setCharacteristic(this.platform.Characteristic.SerialNumber, 'Default-Serial');
+      .setCharacteristic(this.platform.Characteristic.Model, model)
+      .setCharacteristic(this.platform.Characteristic.SerialNumber, serialNumber);
+
+    this.URL = this.platform.baseURL + '/' + serialNumber;
+
+    this.platform.log.debug('URL ->', this.URL);
 
     // get the Switch service if it exists, otherwise create a new Switch service
     // you can create multiple services for each accessory
@@ -40,23 +47,35 @@ export class MieleHoodPlatformAccessory {
 
     // set the service name, this is what is displayed as the default name on the Home app
     // in this example we are using the name we stored in the `accessory.context` in the `discoverDevices` method.
-    this.lightService.setCharacteristic(this.platform.Characteristic.Name, accessory.context.device.exampleDisplayName);
+    this.lightService.setCharacteristic(this.platform.Characteristic.Name, accessory.context.device.displayName + ' Light');
 
     // each service must implement at-minimum the "required characteristics" for the given service type
-    // see https://developers.homebridge.io/#/service/Lightbulb
+    // see https://developers.homebridge.io/#/service/Switch
 
     // register handlers for the On/Off Characteristic
     this.lightService.getCharacteristic(this.platform.Characteristic.On)
       .on('set', this.setLightOn.bind(this))                // SET - bind to the `setOn` method below
       .on('get', this.getLightOn.bind(this));               // GET - bind to the `getOn` method below
-    /*
+
+    // Fan Service
+    
     this.fanService = this.accessory.getService(this.platform.Service.Fan) ||
       this.accessory.addService(this.platform.Service.Fan);
+
+    this.fanService.setCharacteristic(this.platform.Characteristic.Name, accessory.context.device.displayName + ' Fan');
 
     this.fanService.getCharacteristic(this.platform.Characteristic.On)
       .on('get', this.getFanOn.bind(this))
       .on('set', this.setFanOn.bind(this));
-*/
+
+    this.fanService.getCharacteristic(this.platform.Characteristic.RotationSpeed)
+      .on('get', this.getFanSpeed.bind(this))
+      .on('set', this.setFanSpeed.bind(this))
+      .setProps({
+        minValue: 0,
+        maxValue: 100,
+        minStep: 25,
+      });
   }
 
   /**
@@ -73,9 +92,9 @@ export class MieleHoodPlatformAccessory {
 
     const config = {
       'method': 'PUT',
-      'url': 'https://api.mcs3.miele.com/v1/devices/000152570949/actions',
+      'url': this.URL + '/actions',
       'headers': { 
-        'Authorization': 'Bearer US_d98a67c6d04715e96f81ad346f39e14d',
+        'Authorization': this.platform.token,
         'Content-Type': 'application/json',
       },
       body: httpdata,
@@ -88,23 +107,80 @@ export class MieleHoodPlatformAccessory {
       // NO PARSING BQ NO BODY!!!
       // implement your own code to turn your device on/off
       this.States.LightOn = value as boolean;
-      this.platform.log.debug('Set Light Characteristic On ->', value);
+      this.platform.log.debug('End - Set Light Characteristic On ->', value);
       // you must call the callback function
       callback(null);
     });
   }
-  /*
+  
   setFanOn(value: CharacteristicValue, callback: CharacteristicSetCallback) {
 
-    // implement your own code to turn your device on/off
-    this.States.FanOn = value as boolean;
+    let httpdata = JSON.stringify({'powerOff':true});
 
-    this.platform.log.debug('Set Fan Characteristic On ->', value);
+    if (value) {
+      httpdata = JSON.stringify({'powerOn':true});
+    }
 
-    // you must call the callback function
-    callback(null);
+    const config = {
+      'method': 'PUT',
+      'url': this.URL + '/actions',
+      'headers': { 
+        'Authorization': this.platform.token,
+        'Content-Type': 'application/json',
+      },
+      body: httpdata,
+    };
+
+    request(config, (err, res, body) => {
+      if (err) {
+        callback(err);
+      }
+      // NO PARSING BQ NO BODY!!!
+      // implement your own code to turn your device on/off
+      this.States.FanOn = value as boolean;
+      this.platform.log.debug('End - Set Fan Characteristic On ->', value);
+      // you must call the callback function
+      callback(null);
+    });
   }
-*/
+
+  setFanSpeed(value: CharacteristicValue, callback: CharacteristicSetCallback) {
+
+    let fanSpeed :string;
+
+    if (value === '0') {
+      fanSpeed = value;
+    } else {
+      fanSpeed = (Number(value)/25 + 1).toFixed();
+    }
+
+    this.platform.log.debug('End - Set ventilationStep to -> ', fanSpeed);
+    
+    const httpdata = JSON.stringify({'ventilationStep':fanSpeed});
+
+    const config = {
+      'method': 'PUT',
+      'url': this.URL + '/actions',
+      'headers': { 
+        'Authorization': this.platform.token,
+        'Content-Type': 'application/json',
+      },
+      body: httpdata,
+    };
+
+    request(config, (err, res, body) => {
+      if (err) {
+        callback(err);
+      }
+      // NO PARSING BQ NO BODY!!!
+      // implement your own code to turn your device on/off
+      this.States.FanSpeed = value as number;
+      this.platform.log.debug('End - Set Fan Characteristic Speed -> ', value);
+      // you must call the callback function
+      callback(null);
+    });
+  }
+
   /**
    * Handle the "GET" requests from HomeKit
    * These are sent when HomeKit wants to know the current state of the accessory, for example, checking if a Light bulb is on.
@@ -118,14 +194,14 @@ export class MieleHoodPlatformAccessory {
    * @example
    * this.service.updateCharacteristic(this.platform.Characteristic.On, true)
    */
-
-  getLightOn(callback: CharacteristicGetCallback) {
+  
+  getStatus(callback: CharacteristicGetCallback ) {
 
     const config = {
       'method': 'GET',
-      'url': 'https://api.mcs3.miele.com/v1/devices/000152570949/state',
+      'url': this.URL + '/state',
       'headers': { 
-        'Authorization': 'Bearer US_d98a67c6d04715e96f81ad346f39e14d',
+        'Authorization': this.platform.token,
         'Content-Type': 'application/json',
       },
     };
@@ -134,52 +210,69 @@ export class MieleHoodPlatformAccessory {
       if (err) {
         callback(err);
       }
+
+      this.platform.log.debug('Status Body -> ', body);
+
       const response = JSON.parse(body);
+
+      // Get Light status
+
       this.platform.log.debug('Light Value -> ', response.light);
 
-      if (response.light == '1') {
+      if (response.light === 1) {
         this.States.LightOn = true;
       } else {
         this.States.LightOn = false;
       }
 
-      const isOn = this.States.LightOn;
-      this.platform.log.debug('Get Characteristic On ->', isOn);
-      // you must call the callback function
-      // the first argument should be null if there were no errors
-      // the second argument should be the value to return
-      callback(null, isOn);
+      // Get Fan status
+
+      this.platform.log.debug('Fan Step -> ', response.ventilationStep.value_raw);
+
+      if (response.ventilationStep.value_raw === 0) {
+        this.States.FanOn = false;
+      } else {
+        this.States.FanOn = true;
+      }
+      this.States.FanSpeed = response.ventilationStep.value_raw * 25;
+      
     });
   }
-  /*
-  getFanOn(callback: CharacteristicGetCallback) {
 
-    // implement your own code to check if the device is on
-    const isOn = this.States.FanOn;
+  getLightOn(callback: CharacteristicGetCallback) {
 
+    this.getStatus(callback);
+
+    const isOn = this.States.LightOn;
     this.platform.log.debug('Get Characteristic On ->', isOn);
-
+    
     // you must call the callback function
     // the first argument should be null if there were no errors
     // the second argument should be the value to return
     callback(null, isOn);
   }
-*/
-  /**
-   * Handle "SET" requests from HomeKit
-   * These are sent when the user changes the state of an accessory, for example, changing the Brightness
-   */
-  /*
-  setFanSpeed(value: CharacteristicValue, callback: CharacteristicSetCallback) {
 
-    // implement your own code to set the brightness
-    this.States.FanSpeed = value as number;
+  getFanOn(callback: CharacteristicGetCallback){
 
-    this.platform.log.debug('Set Characteristic Fan Speed -> ', value);
+    this.getStatus(callback);
 
+    const fanOn = this.States.FanOn;
+    this.platform.log.debug('Fan On -> ', fanOn);
     // you must call the callback function
-    callback(null);
+    // the first argument should be null if there were no errors
+    // the second argument should be the value to return
+    callback(null, fanOn);
   }
-  */
 
+  getFanSpeed(callback: CharacteristicGetCallback){
+
+    this.getStatus(callback);
+
+    const fanSpeed = this.States.FanSpeed;
+    this.platform.log.debug('Fan Speed -> ', fanSpeed);
+    // you must call the callback function
+    // the first argument should be null if there were no errors
+    // the second argument should be the value to return
+    callback(null, fanSpeed);
+  }
 }

@@ -1,5 +1,5 @@
 {
-  "private": true,
+  "private": false,
   "displayName": "Miele Ventilation Hood",
   "name": "homebridge-miele-hood",
   "version": "1.0.0",
